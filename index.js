@@ -26,7 +26,8 @@ const menuOptions = {
     reply_markup: JSON.stringify({
         keyboard: [
             [{ text: '🎲 লেটেস্ট নাম্বার' }, { text: '📸 স্ক্রিনশট দেখুন' }],
-            [{ text: '🛑 মনিটরিং বন্ধ' }, { text: '▶️ মনিটরিং চালু' }]
+            [{ text: '🛑 মনিটরিং বন্ধ' }, { text: '▶️ মনিটরিং চালু' }],
+            [{ text: '🔍 পেজের HTML দেখুন' }]
         ],
         resize_keyboard: true
     })
@@ -98,6 +99,16 @@ bot.on('message', async (msg) => {
                 await bot.sendPhoto(id, path, { caption: `Page Title: ${title}` });
             } catch (e) {
                 bot.sendMessage(id, `স্ক্রিনশট এরর: ${e.message}`);
+            }
+        }
+    }
+    else if (text === '🔍 পেজের HTML দেখুন') {
+        if (globalPage) {
+            try {
+                const html = await globalPage.evaluate(() => document.body.innerHTML.substring(0, 3000));
+                bot.sendMessage(id, `HTML:\n\`\`\`html\n${html}\n\`\`\``, { parseMode: 'Markdown' });
+            } catch (e) {
+                bot.sendMessage(id, `HTML এরর: ${e.message}`);
             }
         }
     }
