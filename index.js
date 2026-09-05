@@ -80,7 +80,7 @@ function processNewData(period, number) {
         console.log(`New Data: ${period} -> ${number}`);
         
         if (number === '6' || number === '8') {
-            const msg = `🎉 **কাঙ্ক্ষিত নাম্বার পাওয়া গেছে!**\n\nপিরিয়ড: \`${period}\`\nনাম্বার: **${number}**`;
+            const msg = `🎉 **কাঙ্ক্ষিত নাম্বার পাওয়া গেছে!**\n\nনতুন নাম্বার এসেছে: **${number}**`;
             bot.sendMessage(chatId, msg, { parseMode: 'Markdown' });
         }
     }
