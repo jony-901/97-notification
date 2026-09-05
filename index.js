@@ -47,31 +47,45 @@ bot.onText(/\/login (.+) (.+)/, async (msg, match) => {
     bot.sendMessage(id, `লগইন করার চেষ্টা করা হচ্ছে...`);
     try {
         await globalPage.waitForSelector('input', { timeout: 15000 }).catch(() => {});
+        
+        // Find inputs by placeholder or type to be more precise
         const inputs = await globalPage.$$('input');
+        
         if (inputs.length >= 2) {
+            bot.sendMessage(id, `ইনপুট বক্স পাওয়া গেছে। নাম্বার ও পাসওয়ার্ড বসাচ্ছি...`);
+            
+            // clear and type phone
             await inputs[0].click({ clickCount: 3 });
             await globalPage.keyboard.press('Backspace');
-            await inputs[0].type(phone, { delay: 100 });
+            await inputs[0].type(phone, { delay: 50 });
             
+            // clear and type password
             await inputs[1].click({ clickCount: 3 });
             await globalPage.keyboard.press('Backspace');
-            await inputs[1].type(password, { delay: 100 });
+            await inputs[1].type(password, { delay: 50 });
 
             bot.sendMessage(id, 'লগইন বাটনে ক্লিক করছি...');
+            
             await globalPage.evaluate(() => {
-                const buttons = Array.from(document.querySelectorAll('button, div, span, a'));
-                const loginBtn = buttons.find(b => b.innerText && b.innerText.trim().toLowerCase() === 'log in');
-                if (loginBtn) loginBtn.click();
-                else {
-                    const allBtns = document.querySelectorAll('button');
-                    if (allBtns.length > 0) allBtns[0].click();
+                // Find any button containing "Log" or "log" or just the first big button
+                const buttons = Array.from(document.querySelectorAll('button, .u-button, .van-button'));
+                const loginBtn = buttons.find(b => b.innerText && b.innerText.toLowerCase().includes('log'));
+                if (loginBtn) {
+                    loginBtn.click();
+                } else if (buttons.length > 0) {
+                    buttons[0].click();
                 }
             });
-            await new Promise(r => setTimeout(r, 8000));
-            bot.sendMessage(id, 'লগইন প্রসেস শেষ হয়েছে। "📸 স্ক্রিনশট দেখুন" বাটনে ক্লিক করে চেক করুন।');
+            
+            await new Promise(r => setTimeout(r, 6000));
+            bot.sendMessage(id, 'লগইন প্রসেস শেষ হয়েছে। এখন গেমের পেজে যাচ্ছি...');
+            
             await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'domcontentloaded', timeout: 60000 });
+            await new Promise(r => setTimeout(r, 4000));
+            
+            bot.sendMessage(id, 'গেমের পেজে চলে এসেছি। "📸 স্ক্রিনশট দেখুন" বাটনে ক্লিক করে চেক করুন!');
         } else {
-            bot.sendMessage(id, 'লগইন ফর্ম পাওয়া যায়নি। ওয়েবসাইট হয়তো পুরোপুরি লোড হয়নি। স্ক্রিনশট চেক করুন।');
+            bot.sendMessage(id, `লগইন ফর্ম পাওয়া যায়নি। ইনপুট সংখ্যা: ${inputs.length}`);
         }
     } catch (e) {
         bot.sendMessage(id, `লগইন এরর: ${e.message}`);
@@ -95,7 +109,9 @@ bot.on('message', async (msg) => {
             try {
                 const title = await globalPage.title();
                 const path = 'screenshot.png';
-                await globalPage.screenshot({ path: path, fullPage: false });
+                // Adjust viewport temporarily to ensure we get a good screenshot
+                await globalPage.setViewport({ width: 400, height: 800 });
+                await globalPage.screenshot({ path: path, fullPage: true });
                 await bot.sendPhoto(id, path, { caption: `Page Title: ${title}` });
             } catch (e) {
                 bot.sendMessage(id, `স্ক্রিনশট এরর: ${e.message}`);
@@ -144,12 +160,11 @@ async function monitorLottery() {
                 '--disable-setuid-sandbox', 
                 '--disable-dev-shm-usage', 
                 '--disable-web-security',
-                '--disable-features=IsolateOrigins,site-per-process',
-                '--window-size=400,850'
+                '--disable-features=IsolateOrigins,site-per-process'
             ]
         });
         globalPage = await browser.newPage();
-        await globalPage.setViewport({ width: 375, height: 812 });
+        await globalPage.setViewport({ width: 400, height: 800 });
         await globalPage.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1');
         
         globalPage.on('response', async (response) => {
