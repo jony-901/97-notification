@@ -1,0 +1,13 @@
+{
+  "name": "render-lottery-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot using Puppeteer for Render",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "puppeteer": "^22.0.0"
+  }
+}
