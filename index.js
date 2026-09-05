@@ -17,9 +17,8 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot is running!\n');
 });
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    bot.sendMessage(chatId, '✅ Render.com সার্ভারে বট চালু হয়েছে!');
+server.listen(process.env.PORT || 3000, () => {
+    bot.sendMessage(chatId, '✅ Render সার্ভারে বট চালু হয়েছে!');
     monitorLottery();
 });
 
@@ -46,6 +45,7 @@ bot.onText(/\/login (.+) (.+)/, async (msg, match) => {
 
     bot.sendMessage(id, `লগইন করার চেষ্টা করা হচ্ছে...`);
     try {
+        await globalPage.waitForSelector('input', { timeout: 15000 }).catch(() => {});
         const inputs = await globalPage.$$('input');
         if (inputs.length >= 2) {
             await inputs[0].click({ clickCount: 3 });
@@ -66,11 +66,11 @@ bot.onText(/\/login (.+) (.+)/, async (msg, match) => {
                     if (allBtns.length > 0) allBtns[0].click();
                 }
             });
-            await new Promise(r => setTimeout(r, 5000));
+            await new Promise(r => setTimeout(r, 8000));
             bot.sendMessage(id, 'লগইন প্রসেস শেষ হয়েছে। "📸 স্ক্রিনশট দেখুন" বাটনে ক্লিক করে চেক করুন।');
-            await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
+            await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'domcontentloaded', timeout: 60000 });
         } else {
-            bot.sendMessage(id, 'লগইন ফর্ম পাওয়া যায়নি। স্ক্রিনশট চেক করুন।');
+            bot.sendMessage(id, 'লগইন ফর্ম পাওয়া যায়নি। ওয়েবসাইট হয়তো পুরোপুরি লোড হয়নি। স্ক্রিনশট চেক করুন।');
         }
     } catch (e) {
         bot.sendMessage(id, `লগইন এরর: ${e.message}`);
@@ -126,12 +126,20 @@ function processNewData(period, number) {
 async function monitorLottery() {
     try {
         const browser = await puppeteer.launch({
-            headless: true,
+            headless: "new",
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage', 
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--window-size=400,850'
+            ]
         });
         globalPage = await browser.newPage();
         await globalPage.setViewport({ width: 375, height: 812 });
+        await globalPage.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1');
         
         globalPage.on('response', async (response) => {
             if (response.url().includes('loadHistoryData')) {
@@ -149,7 +157,9 @@ async function monitorLottery() {
             }
         });
         
-        await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
+        await globalPage.goto('https://www.97lottery.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await new Promise(r => setTimeout(r, 5000));
+        await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'domcontentloaded', timeout: 60000 });
         
         setInterval(async () => {
             if (!isMonitoring) return;
