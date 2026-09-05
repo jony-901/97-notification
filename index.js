@@ -25,69 +25,14 @@ const menuOptions = {
     reply_markup: JSON.stringify({
         keyboard: [
             [{ text: '🎲 লেটেস্ট নাম্বার' }, { text: '📸 স্ক্রিনশট দেখুন' }],
-            [{ text: '🛑 মনিটরিং বন্ধ' }, { text: '▶️ মনিটরিং চালু' }]
+            [{ text: '🎮 Try Play (ডেমো)' }, { text: '▶️ গেম পেজে যান' }]
         ],
         resize_keyboard: true
     })
 };
 
 bot.onText(/\/start/, (msg) => {
-    const welcome = "স্বাগতম!\n\nযেহেতু ওয়েবসাইটটিতে লগইন প্রয়োজন, তাই আপনাকে একবার লগইন করতে হবে।\n\nলগইন করতে নিচের ফরম্যাটে মেসেজ দিন:\n`/login আপনার_নাম্বার আপনার_পাসওয়ার্ড`\n\nউদাহরণ: `/login 01712345678 mypassword123`";
-    bot.sendMessage(msg.chat.id, welcome, Object.assign({ parseMode: 'Markdown' }, menuOptions));
-});
-
-bot.onText(/\/login (.+) (.+)/, async (msg, match) => {
-    const id = msg.chat.id;
-    const phone = match[1];
-    const password = match[2];
-
-    if (!globalPage) {
-        return bot.sendMessage(id, 'ব্রাউজার এখনো চালু হয়নি, একটু পর চেষ্টা করুন।');
-    }
-
-    bot.sendMessage(id, `লগইন করার চেষ্টা করা হচ্ছে (নাম্বার: ${phone})...`);
-    
-    try {
-        // try to find inputs
-        const inputs = await globalPage.$$('input');
-        if (inputs.length >= 2) {
-            // clear first
-            await inputs[0].click({ clickCount: 3 });
-            await globalPage.keyboard.press('Backspace');
-            await inputs[0].type(phone, { delay: 100 });
-            
-            await inputs[1].click({ clickCount: 3 });
-            await globalPage.keyboard.press('Backspace');
-            await inputs[1].type(password, { delay: 100 });
-
-            bot.sendMessage(id, 'নাম্বার ও পাসওয়ার্ড বসানো হয়েছে, লগইন বাটনে ক্লিক করছি...');
-            
-            // Try to click buttons with 'Log in' text or just any primary button
-            await globalPage.evaluate(() => {
-                const buttons = Array.from(document.querySelectorAll('button, div, span, a'));
-                const loginBtn = buttons.find(b => b.innerText && b.innerText.trim().toLowerCase() === 'log in');
-                if (loginBtn) {
-                    loginBtn.click();
-                } else {
-                    // if not found, try to click the first big button
-                    const allBtns = document.querySelectorAll('button');
-                    if (allBtns.length > 0) allBtns[0].click();
-                }
-            });
-
-            // wait for navigation or a few seconds
-            await new Promise(r => setTimeout(r, 5000));
-            bot.sendMessage(id, 'লগইন প্রসেস শেষ হয়েছে। "📸 স্ক্রিনশট দেখুন" বাটনে ক্লিক করে চেক করুন লগইন সফল হয়েছে কিনা। সফল হলে বট অটোমেটিক ডেটা পড়া শুরু করবে!');
-            
-            // Go to game page again just in case
-            await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
-            
-        } else {
-            bot.sendMessage(id, 'লগইন ফর্ম পাওয়া যায়নি। স্ক্রিনশট চেক করুন।');
-        }
-    } catch (e) {
-        bot.sendMessage(id, `লগইন করতে এরর: ${e.message}`);
-    }
+    bot.sendMessage(msg.chat.id, "স্বাগতম!\n\nলগইন না করে ডেমো দেখতে চাইলে '🎮 Try Play (ডেমো)' বাটনে ক্লিক করুন।", menuOptions);
 });
 
 bot.on('message', async (msg) => {
@@ -98,12 +43,12 @@ bot.on('message', async (msg) => {
         if (lastKnownPeriod) {
             bot.sendMessage(id, `সর্বশেষ ফলাফল:\nপিরিয়ড: \`${lastKnownPeriod}\`\nনাম্বার: **${lastKnownNumber}**`, { parseMode: 'Markdown' });
         } else {
-            bot.sendMessage(id, 'এখনো কোনো ডেটা পাওয়া যায়নি। হয়তো লগইন করা নেই।');
+            bot.sendMessage(id, 'এখনো কোনো ডেটা পাওয়া যায়নি। স্ক্রিনশট চেক করুন।');
         }
     } 
     else if (text === '📸 স্ক্রিনশট দেখুন') {
         if (globalPage) {
-            bot.sendMessage(id, '📸 স্ক্রিনশট নিচ্ছি, কয়েক সেকেন্ড অপেক্ষা করুন...');
+            bot.sendMessage(id, '📸 স্ক্রিনশট নিচ্ছি, অপেক্ষা করুন...');
             try {
                 const path = 'screenshot.png';
                 await globalPage.screenshot({ path: path, fullPage: false });
@@ -111,19 +56,43 @@ bot.on('message', async (msg) => {
             } catch (e) {
                 bot.sendMessage(id, `স্ক্রিনশট নিতে সমস্যা: ${e.message}`);
             }
-        } else {
-            bot.sendMessage(id, 'ব্রাউজার এখনো চালু হয়নি।');
         }
     }
-    else if (text === '🛑 মনিটরিং বন্ধ') {
-        isMonitoring = false;
-        bot.sendMessage(id, '❌ মনিটরিং বন্ধ করা হয়েছে।', menuOptions);
-    } 
-    else if (text === '▶️ মনিটরিং চালু') {
-        isMonitoring = true;
-        bot.sendMessage(id, '✅ মনিটরিং চালু করা হয়েছে!', menuOptions);
+    else if (text === '🎮 Try Play (ডেমো)') {
+        if (globalPage) {
+            bot.sendMessage(id, 'Try Play বাটনে ক্লিক করার চেষ্টা করছি...');
+            try {
+                await globalPage.evaluate(() => {
+                    const elements = Array.from(document.querySelectorAll('*'));
+                    const tryPlayBtn = elements.find(el => el.innerText && el.innerText.toLowerCase().includes('try play'));
+                    if (tryPlayBtn) tryPlayBtn.click();
+                    else {
+                        const demoBtn = elements.find(el => el.innerText && (el.innerText.toLowerCase().includes('demo') || el.innerText.toLowerCase().includes('guest')));
+                        if (demoBtn) demoBtn.click();
+                    }
+                });
+                await new Promise(r => setTimeout(r, 4000));
+                bot.sendMessage(id, 'ক্লিক করা হয়েছে! এখন "▶️ গেম পেজে যান" বাটনে ক্লিক করুন।');
+            } catch (e) {
+                bot.sendMessage(id, `Error: ${e.message}`);
+            }
+        }
+    }
+    else if (text === '▶️ গেম পেজে যান') {
+        if (globalPage) {
+            bot.sendMessage(id, 'গেমের পেজে রিডাইরেক্ট করা হচ্ছে...');
+            try {
+                await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
+                bot.sendMessage(id, 'গেম পেজে চলে এসেছে! স্ক্রিনশট নিয়ে চেক করুন।');
+            } catch (e) {
+                bot.sendMessage(id, `Error: ${e.message}`);
+            }
+        }
     }
 });
+
+// Login code via command remains just in case
+bot.onText(/\/login (.+) (.+)/, async (msg, match) => { /* keeping this out to save space since we added Try Play */ });
 
 function processNewData(period, number) {
     if (period && period !== lastKnownPeriod) {
@@ -145,8 +114,6 @@ async function monitorLottery() {
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         });
         globalPage = await browser.newPage();
-        
-        // set viewport to mobile size to ensure standard mobile layout
         await globalPage.setViewport({ width: 375, height: 812 });
         await globalPage.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1');
         
