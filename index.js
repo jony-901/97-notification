@@ -1,7 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const puppeteer = require('puppeteer');
 const http = require('http');
-const fs = require('fs');
 
 const token = '8928204066:AAE-R762UnOZnMDiTYCfZLuP_OHBFobC-mA';
 const chatId = '7457103363';
@@ -10,7 +9,7 @@ const bot = new TelegramBot(token, { polling: true });
 let isMonitoring = true;
 let lastKnownPeriod = null;
 let lastKnownNumber = null;
-let globalPage = null; // Store page globally for screenshots
+let globalPage = null;
 
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -18,7 +17,6 @@ const server = http.createServer((req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-    console.log(`Server started on port ${PORT}`);
     bot.sendMessage(chatId, '✅ Render.com সার্ভারে বট চালু হয়েছে!');
     monitorLottery();
 });
@@ -34,7 +32,62 @@ const menuOptions = {
 };
 
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "স্বাগতম! মেনু থেকে অপশন বেছে নিন:", menuOptions);
+    const welcome = "স্বাগতম!\n\nযেহেতু ওয়েবসাইটটিতে লগইন প্রয়োজন, তাই আপনাকে একবার লগইন করতে হবে।\n\nলগইন করতে নিচের ফরম্যাটে মেসেজ দিন:\n`/login আপনার_নাম্বার আপনার_পাসওয়ার্ড`\n\nউদাহরণ: `/login 01712345678 mypassword123`";
+    bot.sendMessage(msg.chat.id, welcome, Object.assign({ parseMode: 'Markdown' }, menuOptions));
+});
+
+bot.onText(/\/login (.+) (.+)/, async (msg, match) => {
+    const id = msg.chat.id;
+    const phone = match[1];
+    const password = match[2];
+
+    if (!globalPage) {
+        return bot.sendMessage(id, 'ব্রাউজার এখনো চালু হয়নি, একটু পর চেষ্টা করুন।');
+    }
+
+    bot.sendMessage(id, `লগইন করার চেষ্টা করা হচ্ছে (নাম্বার: ${phone})...`);
+    
+    try {
+        // try to find inputs
+        const inputs = await globalPage.$$('input');
+        if (inputs.length >= 2) {
+            // clear first
+            await inputs[0].click({ clickCount: 3 });
+            await globalPage.keyboard.press('Backspace');
+            await inputs[0].type(phone, { delay: 100 });
+            
+            await inputs[1].click({ clickCount: 3 });
+            await globalPage.keyboard.press('Backspace');
+            await inputs[1].type(password, { delay: 100 });
+
+            bot.sendMessage(id, 'নাম্বার ও পাসওয়ার্ড বসানো হয়েছে, লগইন বাটনে ক্লিক করছি...');
+            
+            // Try to click buttons with 'Log in' text or just any primary button
+            await globalPage.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button, div, span, a'));
+                const loginBtn = buttons.find(b => b.innerText && b.innerText.trim().toLowerCase() === 'log in');
+                if (loginBtn) {
+                    loginBtn.click();
+                } else {
+                    // if not found, try to click the first big button
+                    const allBtns = document.querySelectorAll('button');
+                    if (allBtns.length > 0) allBtns[0].click();
+                }
+            });
+
+            // wait for navigation or a few seconds
+            await new Promise(r => setTimeout(r, 5000));
+            bot.sendMessage(id, 'লগইন প্রসেস শেষ হয়েছে। "📸 স্ক্রিনশট দেখুন" বাটনে ক্লিক করে চেক করুন লগইন সফল হয়েছে কিনা। সফল হলে বট অটোমেটিক ডেটা পড়া শুরু করবে!');
+            
+            // Go to game page again just in case
+            await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
+            
+        } else {
+            bot.sendMessage(id, 'লগইন ফর্ম পাওয়া যায়নি। স্ক্রিনশট চেক করুন।');
+        }
+    } catch (e) {
+        bot.sendMessage(id, `লগইন করতে এরর: ${e.message}`);
+    }
 });
 
 bot.on('message', async (msg) => {
@@ -45,7 +98,7 @@ bot.on('message', async (msg) => {
         if (lastKnownPeriod) {
             bot.sendMessage(id, `সর্বশেষ ফলাফল:\nপিরিয়ড: \`${lastKnownPeriod}\`\nনাম্বার: **${lastKnownNumber}**`, { parseMode: 'Markdown' });
         } else {
-            bot.sendMessage(id, 'এখনো কোনো ডেটা পাওয়া যায়নি। সার্ভার ব্লকড কিনা তা দেখতে "📸 স্ক্রিনশট দেখুন" বাটনে ক্লিক করুন।');
+            bot.sendMessage(id, 'এখনো কোনো ডেটা পাওয়া যায়নি। হয়তো লগইন করা নেই।');
         }
     } 
     else if (text === '📸 স্ক্রিনশট দেখুন') {
@@ -56,7 +109,7 @@ bot.on('message', async (msg) => {
                 await globalPage.screenshot({ path: path, fullPage: false });
                 await bot.sendPhoto(id, path);
             } catch (e) {
-                bot.sendMessage(id, `স্ক্রিনশট নিতে সমস্যা হয়েছে: ${e.message}`);
+                bot.sendMessage(id, `স্ক্রিনশট নিতে সমস্যা: ${e.message}`);
             }
         } else {
             bot.sendMessage(id, 'ব্রাউজার এখনো চালু হয়নি।');
@@ -76,9 +129,7 @@ function processNewData(period, number) {
     if (period && period !== lastKnownPeriod) {
         lastKnownPeriod = period;
         lastKnownNumber = number;
-        
         console.log(`New Data: ${period} -> ${number}`);
-        
         if (number === '6' || number === '8') {
             const msg = `🎉 **কাঙ্ক্ষিত নাম্বার পাওয়া গেছে!**\n\nনতুন নাম্বার এসেছে: **${number}**`;
             bot.sendMessage(chatId, msg, { parseMode: 'Markdown' });
@@ -93,9 +144,11 @@ async function monitorLottery() {
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
             args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         });
-        
         globalPage = await browser.newPage();
-        await globalPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
+        
+        // set viewport to mobile size to ensure standard mobile layout
+        await globalPage.setViewport({ width: 375, height: 812 });
+        await globalPage.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1');
         
         globalPage.on('response', async (response) => {
             if (response.url().includes('loadHistoryData')) {
@@ -113,10 +166,7 @@ async function monitorLottery() {
             }
         });
         
-        bot.sendMessage(chatId, '⏳ ওয়েবসাইটে প্রবেশ করছে...');
         await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
-        
-        bot.sendMessage(chatId, '⏳ ডেটা পড়া শুরু হয়েছে! (৬ বা ৮ আসলে এলার্ট পাবেন)');
         
         setInterval(async () => {
             if (!isMonitoring) return;
@@ -131,7 +181,5 @@ async function monitorLottery() {
             } catch (error) {}
         }, 5000);
         
-    } catch (error) {
-        bot.sendMessage(chatId, `❌ বটে একটি সমস্যা হয়েছে: ${error.message}`);
-    }
+    } catch (error) {}
 }
