@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const puppeteer = require('puppeteer');
 const http = require('http');
+const fs = require('fs');
 
 const token = '8928204066:AAE-R762UnOZnMDiTYCfZLuP_OHBFobC-mA';
 const chatId = '7457103363';
@@ -9,34 +10,34 @@ const bot = new TelegramBot(token, { polling: true });
 let isMonitoring = true;
 let lastKnownPeriod = null;
 let lastKnownNumber = null;
+let globalPage = null; // Store page globally for screenshots
 
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is running on Render!\n');
+    res.end('Bot is running!\n');
 });
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Server started on port ${PORT}`);
-    bot.sendMessage(chatId, '✅ Render.com সার্ভারে বট সফলভাবে চালু হয়েছে!');
+    bot.sendMessage(chatId, '✅ Render.com সার্ভারে বট চালু হয়েছে!');
     monitorLottery();
 });
 
 const menuOptions = {
     reply_markup: JSON.stringify({
         keyboard: [
-            [{ text: '🎲 লেটেস্ট নাম্বার' }, { text: '📊 বটের অবস্থা' }],
-            [{ text: '🛑 মনিটরিং বন্ধ করুন' }, { text: '▶️ মনিটরিং চালু করুন' }]
+            [{ text: '🎲 লেটেস্ট নাম্বার' }, { text: '📸 স্ক্রিনশট দেখুন' }],
+            [{ text: '🛑 মনিটরিং বন্ধ' }, { text: '▶️ মনিটরিং চালু' }]
         ],
-        resize_keyboard: true,
-        one_time_keyboard: false
+        resize_keyboard: true
     })
 };
 
 bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(msg.chat.id, "স্বাগতম 97 Tung Tunk বটে!\nনিচের মেনু থেকে অপশন বেছে নিন:", menuOptions);
+    bot.sendMessage(msg.chat.id, "স্বাগতম! মেনু থেকে অপশন বেছে নিন:", menuOptions);
 });
 
-bot.on('message', (msg) => {
+bot.on('message', async (msg) => {
     const text = msg.text;
     const id = msg.chat.id;
 
@@ -44,19 +45,30 @@ bot.on('message', (msg) => {
         if (lastKnownPeriod) {
             bot.sendMessage(id, `সর্বশেষ ফলাফল:\nপিরিয়ড: \`${lastKnownPeriod}\`\nনাম্বার: **${lastKnownNumber}**`, { parseMode: 'Markdown' });
         } else {
-            bot.sendMessage(id, 'এখনো ওয়েবসাইট লোড হচ্ছে। একটু অপেক্ষা করুন...');
+            bot.sendMessage(id, 'এখনো কোনো ডেটা পাওয়া যায়নি। সার্ভার ব্লকড কিনা তা দেখতে "📸 স্ক্রিনশট দেখুন" বাটনে ক্লিক করুন।');
         }
     } 
-    else if (text === '📊 বটের অবস্থা') {
-        bot.sendMessage(id, `বট বর্তমানে **${isMonitoring ? 'চালু (চলছে)' : 'বন্ধ (স্টপ)'}** অবস্থায় আছে।`, { parseMode: 'Markdown' });
-    } 
-    else if (text === '🛑 মনিটরিং বন্ধ করুন') {
+    else if (text === '📸 স্ক্রিনশট দেখুন') {
+        if (globalPage) {
+            bot.sendMessage(id, '📸 স্ক্রিনশট নিচ্ছি, কয়েক সেকেন্ড অপেক্ষা করুন...');
+            try {
+                const path = 'screenshot.png';
+                await globalPage.screenshot({ path: path, fullPage: false });
+                await bot.sendPhoto(id, path);
+            } catch (e) {
+                bot.sendMessage(id, `স্ক্রিনশট নিতে সমস্যা হয়েছে: ${e.message}`);
+            }
+        } else {
+            bot.sendMessage(id, 'ব্রাউজার এখনো চালু হয়নি।');
+        }
+    }
+    else if (text === '🛑 মনিটরিং বন্ধ') {
         isMonitoring = false;
-        bot.sendMessage(id, '❌ বটের লাইভ মনিটরিং বন্ধ করা হয়েছে।', menuOptions);
+        bot.sendMessage(id, '❌ মনিটরিং বন্ধ করা হয়েছে।', menuOptions);
     } 
-    else if (text === '▶️ মনিটরিং চালু করুন') {
+    else if (text === '▶️ মনিটরিং চালু') {
         isMonitoring = true;
-        bot.sendMessage(id, '✅ বটের লাইভ মনিটরিং আবার চালু করা হয়েছে!', menuOptions);
+        bot.sendMessage(id, '✅ মনিটরিং চালু করা হয়েছে!', menuOptions);
     }
 });
 
@@ -75,25 +87,17 @@ function processNewData(period, number) {
 }
 
 async function monitorLottery() {
-    let browser;
     try {
-        console.log('ব্রাউজার চালু হচ্ছে...');
-        browser = await puppeteer.launch({
+        const browser = await puppeteer.launch({
             headless: true,
             executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--single-process'
-            ]
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
         });
         
-        const page = await browser.newPage();
+        globalPage = await browser.newPage();
+        await globalPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
         
-        // 1. Network Interception Fallback
-        page.on('response', async (response) => {
+        globalPage.on('response', async (response) => {
             if (response.url().includes('loadHistoryData')) {
                 try {
                     const json = await response.json();
@@ -110,39 +114,24 @@ async function monitorLottery() {
         });
         
         bot.sendMessage(chatId, '⏳ ওয়েবসাইটে প্রবেশ করছে...');
-        await page.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
+        await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
         
-        console.log('ওয়েবসাইট লোড হয়েছে।');
         bot.sendMessage(chatId, '⏳ ডেটা পড়া শুরু হয়েছে! (৬ বা ৮ আসলে এলার্ট পাবেন)');
         
         setInterval(async () => {
             if (!isMonitoring) return;
-
             try {
-                // 2. DOM Parsing Fallback (much stronger regex)
-                const result = await page.evaluate(() => {
+                const result = await globalPage.evaluate(() => {
                     const bodyText = document.body.innerText;
-                    // Looks for 13 digit number, followed by spaces/newlines, followed by a single digit
                     const match = bodyText.match(/(202\d{10})[\s\n]+(\d)[\s\n]/);
-                    if (match) {
-                        return {
-                            period: match[1],
-                            number: match[2]
-                        };
-                    }
+                    if (match) return { period: match[1], number: match[2] };
                     return null;
                 });
-                
-                if (result) {
-                    processNewData(result.period, result.number);
-                }
-            } catch (error) {
-                console.log('পেজ স্ক্যানিং ত্রুটি:', error.message);
-            }
+                if (result) processNewData(result.period, result.number);
+            } catch (error) {}
         }, 5000);
         
     } catch (error) {
-        console.error('ব্রাউজার চালু করতে সমস্যা:', error);
         bot.sendMessage(chatId, `❌ বটে একটি সমস্যা হয়েছে: ${error.message}`);
     }
 }
