@@ -1,4 +1,4 @@
 {
-  "summary": "Main bot script with Puppeteer and Telegram menu.",
-  "updatedAt": "2026-09-05T16:53:57.896995Z"
+  "summary": "Updated index.js with better scraping (DOM regex and Network Interception).",
+  "updatedAt": "2026-09-05T17:22:36.626345Z"
 }

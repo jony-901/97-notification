@@ -10,7 +10,6 @@ let isMonitoring = true;
 let lastKnownPeriod = null;
 let lastKnownNumber = null;
 
-// Render Web Service requires binding to a port
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Bot is running on Render!\n');
@@ -61,6 +60,20 @@ bot.on('message', (msg) => {
     }
 });
 
+function processNewData(period, number) {
+    if (period && period !== lastKnownPeriod) {
+        lastKnownPeriod = period;
+        lastKnownNumber = number;
+        
+        console.log(`New Data: ${period} -> ${number}`);
+        
+        if (number === '6' || number === '8') {
+            const msg = `🎉 **কাঙ্ক্ষিত নাম্বার পাওয়া গেছে!**\n\nপিরিয়ড: \`${period}\`\nনাম্বার: **${number}**`;
+            bot.sendMessage(chatId, msg, { parseMode: 'Markdown' });
+        }
+    }
+}
+
 async function monitorLottery() {
     let browser;
     try {
@@ -79,43 +92,49 @@ async function monitorLottery() {
         
         const page = await browser.newPage();
         
+        // 1. Network Interception Fallback
+        page.on('response', async (response) => {
+            if (response.url().includes('loadHistoryData')) {
+                try {
+                    const json = await response.json();
+                    if (json && json.data && json.data.list && json.data.list.length > 0) {
+                        let latest = json.data.list[0];
+                        let period = latest.period || latest.issue;
+                        let number = latest.number || latest.result;
+                        if (period && number !== undefined) {
+                            processNewData(period.toString(), number.toString());
+                        }
+                    }
+                } catch(e) {}
+            }
+        });
+        
         bot.sendMessage(chatId, '⏳ ওয়েবসাইটে প্রবেশ করছে...');
         await page.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
         
-        console.log('ওয়েবসাইট লোড হয়েছে। ২০ সেকেন্ড অপেক্ষা করছি...');
-        await new Promise(r => setTimeout(r, 20000));
+        console.log('ওয়েবসাইট লোড হয়েছে।');
         bot.sendMessage(chatId, '⏳ ডেটা পড়া শুরু হয়েছে! (৬ বা ৮ আসলে এলার্ট পাবেন)');
         
         setInterval(async () => {
             if (!isMonitoring) return;
 
             try {
+                // 2. DOM Parsing Fallback (much stronger regex)
                 const result = await page.evaluate(() => {
-                    const elements = Array.from(document.querySelectorAll('*'));
-                    const regex = /^202\d{10}$/;
-                    for (let el of elements) {
-                        const text = el.innerText ? el.innerText.trim() : '';
-                        if (regex.test(text)) {
-                            const rowText = el.parentElement ? el.parentElement.innerText : '';
-                            const parts = rowText.split('\n');
-                            if (parts.length >= 2) {
-                                return {
-                                    period: text,
-                                    number: parts[1].trim()
-                                };
-                            }
-                        }
+                    const bodyText = document.body.innerText;
+                    // Looks for 13 digit number, followed by spaces/newlines, followed by a single digit
+                    const match = bodyText.match(/(202\d{10})[\s\n]+(\d)[\s\n]/);
+                    if (match) {
+                        return {
+                            period: match[1],
+                            number: match[2]
+                        };
                     }
                     return null;
                 });
                 
-                if (result && result.period !== lastKnownPeriod) {
-                    if (result.number === '6' || result.number === '8') {
-                        const msg = `🎉 **কাঙ্ক্ষিত নাম্বার পাওয়া গেছে!**\n\nপিরিয়ড: \`${result.period}\`\nনাম্বার: **${result.number}**`;
-                        bot.sendMessage(chatId, msg, { parseMode: 'Markdown' });
-                    }
-                    lastKnownPeriod = result.period;
-                    lastKnownNumber = result.number;
+                if (result) {
+                    processNewData(result.period, result.number);
                 }
             } catch (error) {
                 console.log('পেজ স্ক্যানিং ত্রুটি:', error.message);
