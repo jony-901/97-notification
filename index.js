@@ -1,5 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
 const http = require('http');
 
 const token = '8928204066:AAE-R762UnOZnMDiTYCfZLuP_OHBFobC-mA';
@@ -40,12 +42,9 @@ bot.onText(/\/login (.+) (.+)/, async (msg, match) => {
     const phone = match[1];
     const password = match[2];
 
-    if (!globalPage) {
-        return bot.sendMessage(id, 'ব্রাউজার এখনো চালু হয়নি, একটু পর চেষ্টা করুন।');
-    }
+    if (!globalPage) return bot.sendMessage(id, 'ব্রাউজার এখনো চালু হয়নি, একটু পর চেষ্টা করুন।');
 
-    bot.sendMessage(id, `লগইন করার চেষ্টা করা হচ্ছে (নাম্বার: ${phone})...`);
-    
+    bot.sendMessage(id, `লগইন করার চেষ্টা করা হচ্ছে...`);
     try {
         const inputs = await globalPage.$$('input');
         if (inputs.length >= 2) {
@@ -57,29 +56,24 @@ bot.onText(/\/login (.+) (.+)/, async (msg, match) => {
             await globalPage.keyboard.press('Backspace');
             await inputs[1].type(password, { delay: 100 });
 
-            bot.sendMessage(id, 'নাম্বার ও পাসওয়ার্ড বসানো হয়েছে, লগইন বাটনে ক্লিক করছি...');
-            
+            bot.sendMessage(id, 'লগইন বাটনে ক্লিক করছি...');
             await globalPage.evaluate(() => {
                 const buttons = Array.from(document.querySelectorAll('button, div, span, a'));
                 const loginBtn = buttons.find(b => b.innerText && b.innerText.trim().toLowerCase() === 'log in');
-                if (loginBtn) {
-                    loginBtn.click();
-                } else {
+                if (loginBtn) loginBtn.click();
+                else {
                     const allBtns = document.querySelectorAll('button');
                     if (allBtns.length > 0) allBtns[0].click();
                 }
             });
-
             await new Promise(r => setTimeout(r, 5000));
             bot.sendMessage(id, 'লগইন প্রসেস শেষ হয়েছে। "📸 স্ক্রিনশট দেখুন" বাটনে ক্লিক করে চেক করুন।');
-            
             await globalPage.goto('https://www.97lottery.com/#/pages/game/lottery/lottery?type=win', { waitUntil: 'networkidle2', timeout: 60000 });
-            
         } else {
             bot.sendMessage(id, 'লগইন ফর্ম পাওয়া যায়নি। স্ক্রিনশট চেক করুন।');
         }
     } catch (e) {
-        bot.sendMessage(id, `লগইন করতে এরর: ${e.message}`);
+        bot.sendMessage(id, `লগইন এরর: ${e.message}`);
     }
 });
 
@@ -91,18 +85,19 @@ bot.on('message', async (msg) => {
         if (lastKnownPeriod) {
             bot.sendMessage(id, `সর্বশেষ ফলাফল:\nপিরিয়ড: \`${lastKnownPeriod}\`\nনাম্বার: **${lastKnownNumber}**`, { parseMode: 'Markdown' });
         } else {
-            bot.sendMessage(id, 'এখনো কোনো ডেটা পাওয়া যায়নি। স্ক্রিনশট চেক করুন।');
+            bot.sendMessage(id, 'এখনো কোনো ডেটা পাওয়া যায়নি।');
         }
     } 
     else if (text === '📸 স্ক্রিনশট দেখুন') {
         if (globalPage) {
             bot.sendMessage(id, '📸 স্ক্রিনশট নিচ্ছি, অপেক্ষা করুন...');
             try {
+                const title = await globalPage.title();
                 const path = 'screenshot.png';
                 await globalPage.screenshot({ path: path, fullPage: false });
-                await bot.sendPhoto(id, path);
+                await bot.sendPhoto(id, path, { caption: `Page Title: ${title}` });
             } catch (e) {
-                bot.sendMessage(id, `স্ক্রিনশট নিতে সমস্যা: ${e.message}`);
+                bot.sendMessage(id, `স্ক্রিনশট এরর: ${e.message}`);
             }
         }
     }
@@ -137,7 +132,6 @@ async function monitorLottery() {
         });
         globalPage = await browser.newPage();
         await globalPage.setViewport({ width: 375, height: 812 });
-        await globalPage.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 13_2_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.3 Mobile/15E148 Safari/604.1');
         
         globalPage.on('response', async (response) => {
             if (response.url().includes('loadHistoryData')) {
